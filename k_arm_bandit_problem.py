@@ -11,14 +11,16 @@ class Action:
 class Arm:
     def __init__(self, actions):
         self.actions = actions
+        self.pulledTimes = 0;
 
     def pull(self):
+        self.pulledTimes = self.pulledTimes + 1;
         x = random.random()
         acc = 0.0
         for action in self.actions:
             acc += action.prob
             if acc > x:
-                return action.reward_system()
+                return action.reward_system(self.pulledTimes)
 
         # should never occur
         return 0.0
@@ -73,6 +75,7 @@ class Agent:
         for index, q in enumerate(qs):
             if q.get_mean_reward() > best_so_far:
                 best_index = index
+                best_so_far = q.get_mean_reward()
         return best_index
 
     def simple(self, bandit, n_tries, alpha=0.0):
@@ -108,15 +111,15 @@ class Agent:
 
 
 def normal(reward):
-    return lambda: max(0, np.random.normal(reward, 1))
+    return lambda pulledTime : RewardFactor * pulledTime * max(0, np.random.normal(reward, 1))
 
 
-def identity(reward):
-    return lambda: reward
+def identity(reward):    
+    return lambda pulledTime : RewardFactor * pulledTime * reward;
 
 
 def poisson(reward):
-    return lambda: np.random.poisson(reward)
+    return lambda pulledTime : RewardFactor * pulledTime * np.random.poisson(reward)
 
 
 def plot(steps):
@@ -126,13 +129,14 @@ def plot(steps):
     plt.show()
 
 
-def episode(agent, bandit_reward_f=identity):
+def episode(agent, bandit_reward_f=identity):            
     bandit = Bandit(
         [Arm([Action(0.5, bandit_reward_f(0.1)), Action(0.5, bandit_reward_f(0.8))]),
          Arm([Action(0.5, bandit_reward_f(0.2)), Action(0.5, bandit_reward_f(0.9))])])
 
     rewards, steps = agent.solve(bandit, 1000)
     plot(steps)
+    print("rewards=%.3f" % (rewards))
     return rewards
 
 
@@ -149,9 +153,12 @@ def run(strategy, epsilon):
 
 
 if __name__ == "__main__":
+
+    RewardFactor = 0.03;
+        
     for strategy in ['stationary', 'set_alpha']:
-        print('epsilon strategy')
+        print(strategy, ' epsilon strategy')
         run(strategy, 0.1)
 
-        print('greedy strategy')
+        print(strategy, ' greedy strategy')
         run(strategy, 0.)
