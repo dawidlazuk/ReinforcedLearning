@@ -4,9 +4,14 @@ import math
 
 ###### Implementacja ######
 
-#Liniowa funkcja wartosci akcji
-def linear_reward(a, b):
-    return lambda step: a * step + b
+def linear_fun(a, b):
+    return lambda x: a * x + b
+
+def const_fun(val):
+    return lambda x: val
+
+def epsilon_reducing_fun(max_steps, power):
+    return lambda x: math.pow( 1 - x / max_steps, power)
 
 #Pojedyncze ramie maszyny
 class Arm:
@@ -62,77 +67,89 @@ class Bandit:
     
 #Gracz, który nie posiada wiedzy o obecnym stanie maszyny
 class Player_WithoutCaseKnowledge:    
-    def __init__(self, bandit):       
+    def __init__(self, bandit, epsilon_fun, verbose=False):       
         self.bandit = bandit        
+        self.verbose = verbose
         
         self.Q = np.zeros(bandit.n_arms)
         self.N = np.zeros(bandit.n_arms)        
     
-        self.epsilon = 0.5        
-        self.steps_performed = 0
-                
+        self.epsilon_fun = epsilon_fun
+        self.steps_performed = 0        
+          
+    def get_epsilon(self):
+        return self.epsilon_fun(self.steps_performed)
+
     def get_next_arm(self):
-        if(np.random.random() > self.epsilon):
+        if(np.random.random() > self.get_epsilon()):
             #consume
-            print('Consume')
+            if(self.verbose):
+                print('Consume')
             return np.argmax(self.Q)
         else:
             #explore
-            print('Explore')
-            return np.random.randint(0,bandit.n_arms)
+            if(self.verbose):
+                print('Explore')
+            return np.random.randint(0, self.bandit.n_arms)
         
     def perform_step(self):
         self.steps_performed = self.steps_performed + 1
-        self.epsilon =  math.pow((StepsNumber - self.steps_performed) / StepsNumber,3)
+        epsilon = self.get_epsilon()
         
         A = self.get_next_arm()
-        R = bandit.pull_arm(A)
+        R = self.bandit.pull_arm(A)
         self.N[A] = self.N[A] + 1
         self.Q[A] = self.Q[A] + (R - self.Q[A])/self.N[A]
         
-        print('Q ', self.Q, 'N ', self.N, ' epsilon ', self.epsilon)
-        return R, self.epsilon
+        if(self.verbose):
+            print('Q ', self.Q, 'N ', self.N, ' epsilon ', epsilon)
+        return R
     
 #Gracz, który posiada wiedzę o obecnym stanie maszyny    
 class Player_WithCaseKnowledge:        
-    def __init__(self, bandit):       
+    def __init__(self, bandit, epsilon_fun, verbose=False):       
         self.bandit = bandit        
+        self.verbose = verbose
         
         self.Q = np.zeros([bandit.n_arms, bandit.n_actions_per_arm])
         self.N = np.zeros([bandit.n_arms, bandit.n_actions_per_arm])        
     
-        #można zmieniać wraz z przebiegiem uczenia - początkowo eksplorować, a następnie wraz z przypływem wiedzy eksploatować
-        self.epsilon = 0.5        
+        self.epsilon_fun = epsilon_fun
         self.steps_performed = 0        
         
+    def get_epsilon(self):
+        return self.epsilon_fun(self.steps_performed)
+        
     def get_next_arm(self):
-        if(np.random.random() > self.epsilon):
+        if(np.random.random() > self.get_epsilon()):
             #consume
-            print('Consume')
-            return np.argmax(self.Q[:,bandit.current_action])
+            if(self.verbose):
+                print('Consume')
+            return np.argmax(self.Q[:, self.bandit.current_action])
         else:
             #explore
-            print('Explore')
+            if(self.verbose):
+                print('Explore')
             #tutaj można wybierać te akcje, które mało razy zostały przeszukane
             #return np.argmin(self.N[:,bandit.current_action])
             #losowo (według algorytmu)
-            return np.random.randint(0,bandit.n_arms)            
+            return np.random.randint(0, self.bandit.n_arms)            
         
     def perform_step(self):
         self.steps_performed = self.steps_performed + 1
-        self.epsilon = math.pow((StepsNumber - self.steps_performed) / StepsNumber,3)
+        epsilon = self.get_epsilon()
 
-        curr_action = bandit.current_action
+        curr_action = self.bandit.current_action
         A = self.get_next_arm()
-        R = bandit.pull_arm(A)
+        R = self.bandit.pull_arm(A)
         self.N[A, curr_action] = self.N[A, curr_action] + 1
         self.Q[A, curr_action] = self.Q[A, curr_action] + (R - self.Q[A, curr_action])/self.N[A, curr_action]
         
-        for i in range(self.Q.shape[1]):
-            print('State ', i, ': ', 'Q ', self.Q[:, i], 'N ', self.N[:, i])            
-        print('Epsilon ', self.epsilon)
-        return R, self.epsilon
-
+        if(self.verbose):
+            for i in range(self.Q.shape[1]):
+                print('State ', i, ': ', 'Q ', self.Q[:, i], 'N ', self.N[:, i])            
+            print('Epsilon ', epsilon)
+        return R
 
 ###### Metody pomocnicze do eksperymentów ######
 
@@ -165,27 +182,23 @@ def print_Q_plot(Q_values):
     for state in range(Q_values.shape[2]):
         for action in range(Q_values.shape[1]):
             actionStateValue_per_steps = get_actionstatevalue_per_steps(Q_values, action, state)
-            printPlot_lines(axs, actionStateValue_per_steps, 'Funkcja akcji w danym kroku', 'Krok', 'Wartosc')
-            legend.append(f'Stan: {state}, akcja: {action}')
+            printPlot_lines(axs, actionStateValue_per_steps, 'Funkcja wartosci akcji w danym kroku', 'Krok', 'Wartosc')
+            legend.append(f'Stan: {state+1}, akcja: {action+1}')
     plt.legend(legend)
     plt.show()
 
 #Pobieranie danych danego klastra z tablicy
-def GetBatch(array, index):
-    return array[index*Batch_size : (index+1)*Batch_size-1]
+def GetBatch(array, index, batch_size):
+    return array[index*batch_size : (index+1)*batch_size-1]
 
-
-###### Eksperymenty ######
-
-
-def PerformAnExperiment(player_type, bandit_array, reward_fun, steps_number, batch_size):    
+def PerformAnExperiment(player_type, bandit_array, reward_fun, epsilon_fun, steps_number, batch_size):    
     Batch_number = (int)(steps_number/batch_size)
     
     #Inicjalizacja maszyny
     bandit = Bandit(bandit_array, reward_fun)          
     
     #Inicjalizacja gracza (wybór klasy jako algorytmu)
-    player = player_type(bandit)
+    player = player_type(bandit, epsilon_fun)
     
     #Listy na dane do wykresów
     rewards_per_step = []
@@ -194,9 +207,9 @@ def PerformAnExperiment(player_type, bandit_array, reward_fun, steps_number, bat
     
     #Wykonaj iteracje algorytmu
     for i in range(steps_number):
-        reward, curr_eps = player.perform_step();
+        reward = player.perform_step();
         rewards_per_step.append([reward])        
-        epsilon_on_step.append([curr_eps])
+        epsilon_on_step.append([player.get_epsilon()])
         Q_values_per_step.append(np.copy(player.Q))
         print('Step ', i, ' reward ', reward)
     
@@ -212,7 +225,7 @@ def PerformAnExperiment(player_type, bandit_array, reward_fun, steps_number, bat
     #Wyznaczenie ilosci nagród zdobytych w klastrze    
     reward_number_in_batch = []
     for i in range(Batch_number):
-        number_in_batch = np.count_nonzero(GetBatch(rewards_per_step, i))
+        number_in_batch = np.count_nonzero(GetBatch(rewards_per_step, i, batch_size))
         reward_number_in_batch.append(number_in_batch)      
         
     #Wykres nagród w krokach    
@@ -236,136 +249,158 @@ def PerformAnExperiment(player_type, bandit_array, reward_fun, steps_number, bat
     plt.show()
     
     print_Q_plot(Q_values_per_step)
-    
-def Case_Player_WithoutKnowledge_ConstFun():
-    LinearFactor = 0.0
-    LinearStartValue = 0.1
-    Steps_Number = 10000
-    Batch_size = 100
-    Bandit_array = np.array([[0.1, 0.4], [0.3, 0.2]])
-    
-    player_type = Player_WithoutCaseKnowledge
-    reward_fun = linear_reward(LinearFactor, LinearStartValue)
         
-    PerformAnExperiment(player_type,
-                        Bandit_array,
-                        reward_fun,
-                        Steps_Number,
-                        Batch_size)
     
-def Case_Player_WithoutKnowledge_LinearFun():
-    LinearFactor = 0.1
-    LinearStartValue = 0.01
-    Steps_Number = 10000
-    Batch_size = 100
-    Bandit_array = np.array([[0.1, 0.4], [0.3, 0.2]])
+###### Eksperymenty ######
     
-    player_type = Player_WithoutCaseKnowledge
-    reward_fun = linear_reward(LinearFactor, LinearStartValue)
-        
-    PerformAnExperiment(player_type,
-                        Bandit_array,
-                        reward_fun,
-                        Steps_Number,
-                        Batch_size)
-    
-def Case_Player_WithKnowledge_ConstFun():
-    LinearFactor = 0.0
-    LinearStartValue = 0.1
-    Steps_Number = 10000
-    Batch_size = 100
-    Bandit_array = np.array([[0.1, 0.4], [0.3, 0.2]])
-    
-    player_type = Player_WithCaseKnowledge
-    reward_fun = linear_reward(LinearFactor, LinearStartValue)
-        
-    PerformAnExperiment(player_type,
-                        Bandit_array,
-                        reward_fun,
-                        Steps_Number,
-                        Batch_size)
-    
-def Case_Player_WithKnowledge_LinearFun():
-    LinearFactor = 0.1
-    LinearStartValue = 0.1
-    Steps_Number = 10000
-    Batch_size = 100
-    Bandit_array = np.array([[0.1, 0.4], [0.3, 0.2]])
-    
-    player_type = Player_WithCaseKnowledge
-    reward_fun = linear_reward(LinearFactor, LinearStartValue)
-        
-    PerformAnExperiment(player_type,
-                        Bandit_array,
-                        reward_fun,
-                        Steps_Number,
-                        Batch_size)
-
-        
-def obsolete():    
-    #Inicjalizacja stałych
+def Case_WithoutKnowledge_ConstReward_EpsilonConst():
     LinearFactor = 0.0
     LinearStartValue = 1
-    StepsNumber = 10000
+    Steps_Number = 20000
     Batch_size = 100
     Bandit_array = np.array([[0.1, 0.4], [0.3, 0.2]])
+    #Bandit_array = np.array([[0.3, 0.3], [0.3, 0.3]])
     
-    Batch_number = (int)(StepsNumber/Batch_size)
+    player_type = Player_WithoutCaseKnowledge
+    reward_fun = linear_fun(LinearFactor, LinearStartValue)
+    epsilon_fun = const_fun(0.1)
         
-    #Inicjalizacja maszyny
-    bandit = Bandit(Bandit_array, linear_reward(LinearFactor, LinearStartValue))          
+    PerformAnExperiment(player_type,
+                        Bandit_array,
+                        reward_fun,
+                        epsilon_fun,
+                        Steps_Number,
+                        Batch_size)
     
-    #Inicjalizacja gracza (wybór klasy jako algorytmu)
-    player = Player_WithoutCaseKnowledge(bandit)
+def Case_WithoutKnowledge_LinearReward_EpsilonConst():
+    LinearFactor = 0.01
+    LinearStartValue = 1
+    Steps_Number = 20000
+    Batch_size = 100
+    Bandit_array = np.array([[0.1, 0.4], [0.3, 0.2]])
+    #Bandit_array = np.array([[0.3, 0.3], [0.3, 0.3]])
     
-    #Listy na dane do wykresów
-    rewards_per_step = []
-    epsilon_on_step = []
-    Q_values_per_step = []
-    
-    #Wykonaj iteracje algorytmu
-    for i in range(StepsNumber):
-        reward, curr_eps = player.perform_step();
-        rewards_per_step.append([reward])        
-        epsilon_on_step.append([curr_eps])
-        Q_values_per_step.append(np.copy(player.Q))
-        print('Step ', i, ' reward ', reward)
-    
-    #Zlicz sumę zebranych nagród dla każdego kroku
-    total_reward_per_step = np.cumsum(rewards_per_step)
-    
-    #Wyznaczenie sumy nagród zdobytych w klastrze
-    reward_value_in_batch = []
-    for i in range(Batch_number):
-        value_in_batch = np.sum(rewards_per_step[i*Batch_size : (i+1)*Batch_size-1])
-        reward_value_in_batch.append(value_in_batch)
-    
-    #Wyznaczenie ilosci nagród zdobytych w klastrze    
-    reward_number_in_batch = []
-    for i in range(Batch_number):
-        number_in_batch = np.count_nonzero(GetBatch(rewards_per_step, i))
-        reward_number_in_batch.append(number_in_batch)      
+    player_type = Player_WithoutCaseKnowledge
+    reward_fun = linear_fun(LinearFactor, LinearStartValue)
+    epsilon_fun = const_fun(0.1)
         
-    #Wykres nagród w krokach    
-    fig, axs = plt.subplots(2, 1, constrained_layout=True)
-    printPlot_dots(axs[0], rewards_per_step, 'Nagroda w każdym kroku', 'Kroki', 'Wartosc nagrody')
-    printPlot_lines(axs[1], total_reward_per_step, 'Suma nagród w każdym kroku', 'Kroki', 'Suma nagrody')
-    fig.set_size_inches(10,10)
-    plt.show()
+    PerformAnExperiment(player_type,
+                        Bandit_array,
+                        reward_fun,
+                        epsilon_fun,
+                        Steps_Number,
+                        Batch_size)
     
-    #Wykres nagród w klastrach
-    fig, axs = plt.subplots(2, 1, constrained_layout=True)
-    printPlot_dots(axs[0], reward_value_in_batch, 'Wartosć nagród w klastrach', 'Klastry', 'Wartosc nagrody')
-    printPlot_lines(axs[1], reward_number_in_batch, 'Ilosc sukcesow w klastrach', 'Klastry', 'Ilosc sukcesów')
-    fig.set_size_inches(10,10)
-    plt.show()
+def Case_WithKnowledge_ConstReward_EpsilonConst():
+    LinearFactor = 0.0
+    LinearStartValue = 1
+    Steps_Number = 10000000
+    Batch_size = 10000
+    Bandit_array = np.array([[0.1, 0.4], [0.3, 0.2]])
+    #Bandit_array = np.array([[0.3, 0.3], [0.3, 0.3]])
     
-    #wykres epsilon
-    fig, axs = plt.subplots(1, 1, constrained_layout=True)
-    printPlot_lines(axs, epsilon_on_step, 'Wartosć epsilon w każdym kroku', 'Kroki', 'Wartosć epsilon')
-    fig.set_size_inches(10,5)
-    plt.show()
-    
-    print_Q_plot(Q_values_per_step)
-    
+    player_type = Player_WithCaseKnowledge
+    reward_fun = linear_fun(LinearFactor, LinearStartValue)
+    epsilon_fun = const_fun(0.1)
         
+    PerformAnExperiment(player_type,
+                        Bandit_array,
+                        reward_fun,
+                        epsilon_fun,
+                        Steps_Number,
+                        Batch_size)
+    
+def Case_WithKnowledge_LinearReward_EpsilonConst():
+    LinearFactor = 0.01
+    LinearStartValue = 1
+    Steps_Number = 20000
+    Batch_size = 100
+    Bandit_array = np.array([[0.1, 0.4], [0.3, 0.2]])
+    #Bandit_array = np.array([[0.3, 0.3], [0.3, 0.3]])
+    
+    player_type = Player_WithCaseKnowledge
+    reward_fun = linear_fun(LinearFactor, LinearStartValue)
+    epsilon_fun = const_fun(0.1)
+        
+    PerformAnExperiment(player_type,
+                        Bandit_array,
+                        reward_fun,
+                        epsilon_fun,
+                        Steps_Number,
+                        Batch_size)
+    
+def Case_WithoutKnowledge_ConstReward_ReducingEpsilon():
+    LinearFactor = 0.0
+    LinearStartValue = 1
+    Steps_Number = 30000
+    Batch_size = 100
+    Bandit_array = np.array([[0.1, 0.4], [0.3, 0.2]])
+    #Bandit_array = np.array([[0.3, 0.3], [0.3, 0.3]])
+    
+    player_type = Player_WithoutCaseKnowledge
+    reward_fun = linear_fun(LinearFactor, LinearStartValue)
+    epsilon_fun = epsilon_reducing_fun(Steps_Number, 3)
+        
+    PerformAnExperiment(player_type,
+                        Bandit_array,
+                        reward_fun,
+                        epsilon_fun,
+                        Steps_Number,
+                        Batch_size)
+    
+def Case_WithoutKnowledge_LinearReward_ReducingEpsilon():
+    LinearFactor = 0.01
+    LinearStartValue = 1
+    Steps_Number = 20000
+    Batch_size = 100
+    Bandit_array = np.array([[0.1, 0.4], [0.3, 0.2]])
+    #Bandit_array = np.array([[0.3, 0.3], [0.3, 0.3]])
+    
+    player_type = Player_WithoutCaseKnowledge
+    reward_fun = linear_fun(LinearFactor, LinearStartValue)
+    epsilon_fun = epsilon_reducing_fun(Steps_Number, 3)
+        
+    PerformAnExperiment(player_type,
+                        Bandit_array,
+                        reward_fun,
+                        epsilon_fun,
+                        Steps_Number,
+                        Batch_size)
+    
+def Case_WithKnowledge_ConstReward_ReducingEpsilon():
+    LinearFactor = 0.0
+    LinearStartValue = 1
+    Steps_Number = 20000
+    Batch_size = 100
+    Bandit_array = np.array([[0.1, 0.4], [0.3, 0.2]])
+    #Bandit_array = np.array([[0.3, 0.3], [0.3, 0.3]])
+    
+    player_type = Player_WithCaseKnowledge
+    reward_fun = linear_fun(LinearFactor, LinearStartValue)
+    epsilon_fun = epsilon_reducing_fun(Steps_Number, 3)        
+    PerformAnExperiment(player_type,
+                        Bandit_array,
+                        reward_fun,
+                        epsilon_fun,
+                        Steps_Number,
+                        Batch_size)
+    
+def Case_WithKnowledge_LinearReward_ReducingEpsilon():
+    LinearFactor = 0.01
+    LinearStartValue = 1
+    Steps_Number = 20000
+    Batch_size = 100
+    Bandit_array = np.array([[0.1, 0.4], [0.3, 0.2]])
+    #Bandit_array = np.array([[0.3, 0.3], [0.3, 0.3]])
+    
+    player_type = Player_WithCaseKnowledge
+    reward_fun = linear_fun(LinearFactor, LinearStartValue)
+    epsilon_fun = epsilon_reducing_fun(Steps_Number, 3)
+        
+    PerformAnExperiment(player_type,
+                        Bandit_array,
+                        reward_fun,
+                        epsilon_fun,
+                        Steps_Number,
+                        Batch_size)
+    
