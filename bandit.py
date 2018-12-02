@@ -277,7 +277,7 @@ def Case_WithoutKnowledge_LinearReward_EpsilonConst():
     LinearStartValue = 1
     Steps_Number = 20000
     Batch_size = 100
-    Bandit_array = np.array([[0.1, 0.4], [0.3, 0.2]])
+    Bandit_array = np.array([[0.1, 0.4], [0.3, 0.3]])
     #Bandit_array = np.array([[0.3, 0.3], [0.3, 0.3]])
     
     player_type = Player_WithoutCaseKnowledge
@@ -294,8 +294,8 @@ def Case_WithoutKnowledge_LinearReward_EpsilonConst():
 def Case_WithKnowledge_ConstReward_EpsilonConst():
     LinearFactor = 0.0
     LinearStartValue = 1
-    Steps_Number = 10000000
-    Batch_size = 10000
+    Steps_Number = 20000
+    Batch_size = 100
     Bandit_array = np.array([[0.1, 0.4], [0.3, 0.2]])
     #Bandit_array = np.array([[0.3, 0.3], [0.3, 0.3]])
     
