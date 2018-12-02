@@ -332,7 +332,7 @@ def Case_WithKnowledge_LinearReward_EpsilonConst():
 def Case_WithoutKnowledge_ConstReward_ReducingEpsilon():
     LinearFactor = 0.0
     LinearStartValue = 1
-    Steps_Number = 30000
+    Steps_Number = 20000
     Batch_size = 100
     Bandit_array = np.array([[0.1, 0.4], [0.3, 0.2]])
     #Bandit_array = np.array([[0.3, 0.3], [0.3, 0.3]])
